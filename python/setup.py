@@ -6,10 +6,19 @@ import pybind11
 
 from pybind11.setup_helpers import ParallelCompile
 from setuptools import Extension, find_packages, setup
+import shutil
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
 include_dirs = [pybind11.get_include()]
 library_dirs = []
+
+include_dirs.append(r"C:\CTranslate2\include")
+library_dirs.append(r"C:\CTranslate2\build")
+
+dll_src = r"C:\CTranslate2\build\ctranslate2.dll"
+dll_dst = os.path.join(base_dir, "ctranslate2", "ctranslate2.dll")
+print(dll_dst)
+shutil.copy(dll_src, dll_dst)
 
 
 def _get_long_description():
