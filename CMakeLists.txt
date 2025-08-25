@@ -22,6 +22,8 @@ option(BUILD_TESTS "Compile the tests" OFF)
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 option(WITH_TENSOR_PARALLEL "Compile with NCCL and MPI backend" OFF)
 option(WITH_FLASH_ATTN "Compile with Flash Attention 2" OFF)
+option(WITH_HIP "Compile with HIP backend" OFF)
+
 
 if(ENABLE_PROFILING)
   message(STATUS "Enable profiling support")
@@ -80,6 +82,12 @@ string(REPLACE "." ";" CTRANSLATE2_VERSION_LIST ${CTRANSLATE2_VERSION})
 list(GET CTRANSLATE2_VERSION_LIST 0 CTRANSLATE2_MAJOR_VERSION)
 
 if(MSVC)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /d2FH4-")
+else()
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
+endif()
+
+if(WIN32)
   add_compile_definitions(_USE_MATH_DEFINES) # required for M_PI
   if(BUILD_SHARED_LIBS)
     set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
@@ -89,9 +97,6 @@ if(MSVC)
     endif()
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
   endif()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /d2FH4-")
-else()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
   if(NOT APPLE AND NOT WIN32)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,noexecstack")
   endif()
@@ -199,13 +204,6 @@ set(SOURCES
   src/ops/transpose.cc
   src/ops/nccl_ops.cc
   src/ops/nccl_ops_cpu.cc
-  src/ops/awq/dequantize.cc
-  src/ops/awq/dequantize_cpu.cc
-  src/ops/awq/gemm.cc
-  src/ops/awq/gemm_cpu.cc
-  src/ops/awq/gemv.cc
-  src/ops/awq/gemv_cpu.cc
-  src/ops/sum.cc
   src/padder.cc
   src/profiler.cc
   src/random.cc
@@ -219,6 +217,61 @@ set(SOURCES
   src/vocabulary.cc
   src/vocabulary_map.cc
 )
+set(CPU_SOURCES
+  src/cpu/allocator.cc
+  src/cpu/backend.cc
+  src/cpu/cpu_info.cc
+  src/cpu/cpu_isa.cc
+  src/cpu/kernels.cc
+  src/cpu/parallel.cc
+  src/cpu/primitives.cc
+  src/ops/alibi_add_cpu.cc
+  src/ops/bias_add_cpu.cc
+  src/ops/concat_split_slide_cpu.cc
+  src/ops/conv1d_cpu.cc
+  src/ops/dequantize_cpu.cc
+  src/ops/gather_cpu.cc
+  src/ops/gumbel_max_cpu.cc
+  src/ops/layer_norm_cpu.cc
+  src/ops/mean_cpu.cc
+  src/ops/multinomial_cpu.cc
+  src/ops/quantize_cpu.cc
+  src/ops/rms_norm_cpu.cc
+  src/ops/rotary_cpu.cc
+  src/ops/softmax_cpu.cc
+  src/ops/tile_cpu.cc
+  src/ops/topk_cpu.cc
+  src/ops/topp_mask_cpu.cc
+  src/ops/nccl_ops_cpu.cc
+  src/ops/flash_attention_cpu.cc
+)
+
+set(CUDA_SOURCES
+  src/cuda/allocator.cc
+  src/cuda/primitives.cu
+  src/cuda/random.cu
+  src/cuda/utils.cc
+  src/ops/alibi_add_gpu.cu
+  src/ops/bias_add_gpu.cu
+  src/ops/concat_split_slide_gpu.cu
+  src/ops/conv1d_gpu.cu
+  src/ops/dequantize_gpu.cu
+  src/ops/gather_gpu.cu
+  src/ops/gumbel_max_gpu.cu
+  src/ops/layer_norm_gpu.cu
+  src/ops/mean_gpu.cu
+  src/ops/multinomial_gpu.cu
+  src/ops/rms_norm_gpu.cu
+  src/ops/rotary_gpu.cu
+  src/ops/softmax_gpu.cu
+  src/ops/tile_gpu.cu
+  src/ops/topk_gpu.cu
+  src/ops/topp_mask_gpu.cu
+  src/ops/quantize_gpu.cu
+  src/ops/nccl_ops_gpu.cu
+  src/ops/flash_attention_gpu.cu
+)
+
 set(LIBRARIES
   ${CMAKE_THREAD_LIBS_INIT}
   spdlog::spdlog_header_only
@@ -258,7 +311,7 @@ if(ENABLE_CPU_DISPATCH)
   message(STATUS "Compiling for multiple CPU ISA and enabling runtime dispatch")
   add_definitions(-DCT2_WITH_CPU_DISPATCH)
   if(CT2_BUILD_ARCH STREQUAL "x86_64")
-    if(WIN32)
+    if(MSVC)
       ct2_compile_kernels_for_isa(avx "/arch:AVX")
       ct2_compile_kernels_for_isa(avx2 "/arch:AVX2")
       ct2_compile_kernels_for_isa(avx512 "/arch:AVX512")
@@ -629,39 +682,64 @@ if (WITH_CUDA)
   set(CUDA_LINK_LIBRARIES_KEYWORD PRIVATE)
   cuda_add_library(${PROJECT_NAME}
     ${SOURCES}
-    src/cuda/allocator.cc
-    src/cuda/primitives.cu
-    src/cuda/random.cu
-    src/cuda/utils.cc
-    src/ops/alibi_add_gpu.cu
-    src/ops/bias_add_gpu.cu
-    src/ops/concat_split_slide_gpu.cu
-    src/ops/conv1d_gpu.cu
-    src/ops/dequantize_gpu.cu
-    src/ops/flash_attention_gpu.cu
-    src/ops/gather_gpu.cu
-    src/ops/gumbel_max_gpu.cu
-    src/ops/layer_norm_gpu.cu
-    src/ops/mean_gpu.cu
-    src/ops/multinomial_gpu.cu
-    src/ops/rms_norm_gpu.cu
-    src/ops/rotary_gpu.cu
-    src/ops/softmax_gpu.cu
-    src/ops/tile_gpu.cu
-    src/ops/topk_gpu.cu
-    src/ops/topp_mask_gpu.cu
-    src/ops/quantize_gpu.cu
-    src/ops/nccl_ops_gpu.cu
-    src/ops/awq/gemm_gpu.cu
-    src/ops/awq/gemv_gpu.cu
-    src/ops/awq/dequantize_gpu.cu
+    ${CUDA_SOURCES}
+  )
+endif()
+
+
+if (WITH_HIP)
+  enable_language(HIP)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+  message(STATUS "HIP Compiler: ${CMAKE_HIP_COMPILER}")
+  #add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
+  if(NOT DEFINED ENV{ROCM_PATH})
+    set(ROCM_PATH /opt/rocm)
+  else()
+    set(ROCM_PATH $ENV{ROCM_PATH})
+  endif()
+  list(APPEND CMAKE_PREFIX_PATH ${ROCM_PATH})
+
+  find_package(hiprand REQUIRED)
+  find_package(hipblas REQUIRED)
+  find_package(rocprim REQUIRED)
+  find_package(rocthrust REQUIRED)
+  find_package(hipcub REQUIRED)
+  
+  #TODO: properly separate files that need hip compiler
+  #set_source_files_properties(${SOURCES} PROPERTIES LANGUAGE HIP)
+  set_source_files_properties(${CUDA_SOURCES} PROPERTIES LANGUAGE HIP)
+  set_source_files_properties(${CPU_SOURCES} PROPERTIES LANGUAGE CXX)
+  link_directories(${ROCM_PATH}/lib)
+
+  add_definitions(-DCT2_WITH_CUDA)
+  add_definitions(-DCT2_USE_HIP)
+
+  add_library(${PROJECT_NAME}
+    ${SOURCES}
+    ${CUDA_SOURCES}
   )
 
+  add_compile_definitions(__HIP_PLATFORM_AMD__)
+  add_compile_definitions(__HIP_PLATFORM_HCC__)
+  target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/include ${ROCM_PATH}/include /include)
+  target_link_libraries(${PROJECT_NAME} PRIVATE hiprand roc::hipblas roc::rocprim roc::rocthrust hip::hipcub)
 
-elseif(WITH_CUDNN)
-  message(FATAL_ERROR "WITH_CUDNN=ON requires WITH_CUDA=ON")
-else()
-  add_library(${PROJECT_NAME} ${SOURCES})
+  if(WITH_CUDNN)
+    find_package(miopen)
+    target_link_libraries(${PROJECT_NAME} PRIVATE MIOpen)	  
+    add_definitions(-DCT2_WITH_CUDNN)
+endif()
+
+  set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
+  set(CMAKE_SHARED_LINKER_FLAGS "-Wl,--no-undefined") #for debug
+endif()
+
+if(NOT (WITH_CUDA OR WITH_HIP))
+  if(WITH_CUDNN)
+    message(FATAL_ERROR "WITH_CUDNN=ON requires WITH_CUDA=ON or WITH_HIP=ON")
+  else()
+    add_library(${PROJECT_NAME} ${SOURCES})
+  endif()
 endif()
 
 include(GenerateExportHeader)

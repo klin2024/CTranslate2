@@ -95,8 +95,12 @@ namespace ctranslate2 {
     switch (device) {
     case Device::CUDA: {
 #ifdef CT2_WITH_CUDA
-      static const bool allow_bfloat16 = read_bool_from_env("CT2_CUDA_ALLOW_BF16");
-      return allow_bfloat16 || cuda::get_device_properties(device_index).major >= 8;
+      #ifdef CT2_USE_HIP
+        return true;
+      #else
+        static const bool allow_float16 = read_bool_from_env("CT2_CUDA_ALLOW_FP16");
+        return allow_float16 || cuda::gpu_has_fp16_tensor_cores(device_index);
+      #endif
 #else
       (void)device_index;
       return false;

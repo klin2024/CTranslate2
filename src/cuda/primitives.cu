@@ -1,7 +1,34 @@
 #include "ctranslate2/primitives.h"
 
+#ifdef CT2_USE_HIP
+#include <hip/hip_runtime.h>
+#include <hipblas/hipblas.h>
+#define cudaMemcpyAsync hipMemcpyAsync
+#define cudaMemcpyDeviceToDevice hipMemcpyDeviceToDevice
+#define cudaMemcpyDeviceToHost hipMemcpyDeviceToHost
+#define cudaMemcpyHostToDevice hipMemcpyHostToDevice
+#define cublasSgemm hipblasSgemm
+#define CUBLAS_OP_T HIPBLAS_OP_T
+#define CUBLAS_OP_N HIPBLAS_OP_N
+#define cudaDataType_t  hipDataType
+#define cublasComputeType_t hipblasComputeType_t
+#define CUDA_R_16F HIP_R_16F
+#define CUBLAS_COMPUTE_16F HIPBLAS_COMPUTE_16F 
+#define CUBLAS_COMPUTE_32F HIPBLAS_COMPUTE_32F
+#define CUBLAS_COMPUTE_32I HIPBLAS_COMPUTE_32I
+#define CUDA_R_32F HIP_R_32F
+#define CUDA_R_16BF HIP_R_16BF
+#define cublasGemmEx hipblasGemmEx_v2
+#define CUDA_R_8I HIP_R_8I
+#define CUDA_R_32I HIP_R_32I
+#define CUBLAS_GEMM_DEFAULT_TENSOR_OP HIPBLAS_GEMM_DEFAULT
+#define cublasSgemmStridedBatched hipblasSgemmStridedBatched
+#define cublasGemmStridedBatchedEx hipblasGemmStridedBatchedEx_v2
+#else
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
+#endif
+
 #include <thrust/device_ptr.h>
 
 #include "cuda/helpers.h"
@@ -57,8 +84,10 @@ namespace ctranslate2 {
 
   template void primitives<Device::CUDA>::convert(const float*, float16_t*, dim_t);
   template void primitives<Device::CUDA>::convert(const float16_t*, float*, dim_t);
+  #if CUDA_CAN_USE_BF16_MATH
   template void primitives<Device::CUDA>::convert(const float*, bfloat16_t*, dim_t);
   template void primitives<Device::CUDA>::convert(const bfloat16_t*, float*, dim_t);
+  #endif 
 
   struct convert_via_float {
     template <typename T>
@@ -67,6 +96,7 @@ namespace ctranslate2 {
     }
   };
 
+  #if CUDA_CAN_USE_BF16_MATH
   template<>
   template<>
   void primitives<Device::CUDA>::convert(const float16_t* x, bfloat16_t* y, dim_t size) {
@@ -78,6 +108,7 @@ namespace ctranslate2 {
   void primitives<Device::CUDA>::convert(const bfloat16_t* x, float16_t* y, dim_t size) {
     cuda::unary_transform(x, y, size, convert_via_float());
   }
+  #endif
 
   template<>
   template <typename T>
@@ -484,12 +515,12 @@ namespace ctranslate2 {
 
     const void* alpha_ptr = &alpha_h;
     const void* beta_ptr = &beta_h;
-    cudaDataType_t compute_type = CUDA_R_16F;
+    cublasComputeType_t  compute_type = CUBLAS_COMPUTE_16F;
 
     if (!cuda::use_true_fp16_gemm()) {
       alpha_ptr = &alpha;
       beta_ptr = &beta;
-      compute_type = CUDA_R_32F;
+      compute_type = CUBLAS_COMPUTE_32F;
     }
 
     // cuBLAS assumes column-major storage, so swap a and b accordingly.
@@ -506,6 +537,7 @@ namespace ctranslate2 {
                               CUBLAS_GEMM_DEFAULT_TENSOR_OP));
   }
 
+  #if CUDA_CAN_USE_BF16_MATH
   template<>
   template<>
   void primitives<Device::CUDA>::gemm(bool, bool,
@@ -530,6 +562,8 @@ namespace ctranslate2 {
                               CUDA_R_32F,
                               CUBLAS_GEMM_DEFAULT_TENSOR_OP));
   }
+  #endif
+
 
   template<>
   template<>
@@ -555,7 +589,7 @@ namespace ctranslate2 {
                               a, CUDA_R_8I, lda,
                               &beta_i,
                               c, CUDA_R_32I, ldc,
-                              CUDA_R_32I,
+                              CUBLAS_COMPUTE_32I,
                               CUBLAS_GEMM_DEFAULT_TENSOR_OP));
   }
 
@@ -597,12 +631,12 @@ namespace ctranslate2 {
 
     const void* alpha_ptr = &alpha_h;
     const void* beta_ptr = &beta_h;
-    cudaDataType_t compute_type = CUDA_R_16F;
+    cublasComputeType_t  compute_type = CUBLAS_COMPUTE_16F;
 
     if (!cuda::use_true_fp16_gemm()) {
       alpha_ptr = &alpha;
       beta_ptr = &beta;
-      compute_type = CUDA_R_32F;
+      compute_type = CUBLAS_COMPUTE_32F;
     }
 
     // cuBLAS assumes column-major storage, so swap a and b accordingly.
@@ -619,7 +653,7 @@ namespace ctranslate2 {
                                             compute_type,
                                             CUBLAS_GEMM_DEFAULT_TENSOR_OP));
   }
-
+  #if CUDA_CAN_USE_BF16_MATH
   template<>
   template<>
   void primitives<Device::CUDA>::gemm_batch_strided(bool transpose_a, bool transpose_b,
@@ -644,6 +678,8 @@ namespace ctranslate2 {
                                             CUDA_R_32F,
                                             CUBLAS_GEMM_DEFAULT_TENSOR_OP));
   }
+  #endif
+
 
   template <typename T>
   class exp_minus_max_func {
@@ -806,6 +842,9 @@ namespace ctranslate2 {
 
   DECLARE_FLOAT_IMPL(float)
   DECLARE_FLOAT_IMPL(float16_t)
+  #if CUDA_CAN_USE_BF16_MATH
   DECLARE_FLOAT_IMPL(bfloat16_t)
+  #endif
+
 
 }

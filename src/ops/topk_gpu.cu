@@ -61,8 +61,9 @@ namespace ctranslate2 {
 
     DECLARE_IMPL(float)
     DECLARE_IMPL(float16_t)
+    #if CUDA_CAN_USE_BF16_MATH
     DECLARE_IMPL(bfloat16_t)
-
+    #endif
   }
 }
 
@@ -115,9 +116,12 @@ namespace ctranslate2 {
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
 */
-
+#ifdef CT2_USE_HIP
+#include <hipcub/block/block_reduce.hpp>
+#define cub hipcub
+#else
 #include <cub/block/block_reduce.cuh>
-
+#endif
 namespace fastertransformer {
 
 #define NOT_FOUND -1

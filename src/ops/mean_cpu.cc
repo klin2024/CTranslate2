@@ -11,7 +11,6 @@ namespace ctranslate2 {
                        const dim_t outer_size,
                        const dim_t axis_size,
                        const dim_t inner_size,
-                       const bool get_sum,
                        StorageView& output) const {
       const auto* src = input.data<T>();
       auto* dst = output.data<T>();
@@ -23,9 +22,7 @@ namespace ctranslate2 {
             for (dim_t k = 0; k < axis_size; ++k) {
               sum += src[i * axis_size * inner_size + k * inner_size + j];
             }
-            dst[i * inner_size + j] = sum;
-            if (!get_sum)
-              dst[i * inner_size + j] /= float(axis_size);
+            dst[i * inner_size + j] = sum / float(axis_size);
           }
         }
       });
@@ -37,7 +34,6 @@ namespace ctranslate2 {
                                   const dim_t outer_size,       \
                                   const dim_t axis_size,        \
                                   const dim_t inner_size,       \
-                                  const bool get_sum,           \
                                   StorageView& output) const;
 
     DECLARE_IMPL(float)
